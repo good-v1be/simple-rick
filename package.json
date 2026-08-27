@@ -1,0 +1,64 @@
+{
+  "name": "simple-rick",
+  "version": "1.0.0",
+  "description": "Persistent memory for AI coding agents: an MCP server that records your sessions, normalizes them into a searchable knowledge graph, and hands the context back at the start of the next one.",
+  "type": "module",
+  "bin": {
+    "simple-rick": "./dist/server/index.js"
+  },
+  "files": [
+    "dist/",
+    "hooks/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "tsx watch src/server/index.ts",
+    "build": "tsc",
+    "postbuild": "cp src/server/db/schema.sql dist/server/db/ && mkdir -p dist/server/ui && cp src/server/ui/index.html dist/server/ui/",
+    "start": "node dist/server/index.js",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "memory",
+    "context",
+    "claude",
+    "coding-agent",
+    "sqlite",
+    "embeddings",
+    "knowledge-graph"
+  ],
+  "author": "Fabian Walter",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@huggingface/hub": "^2.11.0",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "better-sqlite3": "^12.8.0",
+    "chokidar": "^4.0.3",
+    "diff": "^7.0.0",
+    "openai": "^6.33.0",
+    "sqlite-vec": "^0.1.7",
+    "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/diff": "^7.0.2",
+    "@types/node": "^25.5.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/good-v1be/simple-rick.git"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

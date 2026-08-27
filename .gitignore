@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.local
+.env
+
+# Simple Rick's own data directory (DB, vault, bearer token)
+.simple-rick/
+
+# OS / editor
+.DS_Store
+
+# Python
+__pycache__/
