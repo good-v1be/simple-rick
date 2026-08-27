@@ -3,6 +3,7 @@ import type { LightweightNormalizer } from './lightweight-normalizer.js';
 import type { DeepNormalizer } from './deep-normalizer.js';
 import type { EdgeWirer } from './edge-wirer.js';
 import type { InsightEngine } from './insight/engine.js';
+import { LIMITS } from '../limits.js';
 
 type EventCallback = (event: Record<string, unknown>) => void;
 
@@ -17,7 +18,7 @@ export class NormQueue {
     private deepNorm: DeepNormalizer,
     private edgeWirer: EdgeWirer,
     private onEvent: EventCallback,
-    private throttleMs = 2000,
+    private throttleMs = LIMITS.queueThrottleMs,
   ) {}
 
   /** Wire up the insight engine for post-normalization analysis. */

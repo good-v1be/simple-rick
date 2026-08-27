@@ -11,7 +11,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import path from 'node:path';
 import fs from 'node:fs';
-import { createDatabase, ensureVecTable } from './db/sqlite.js';
+import { createDatabase, ensureVecTable, assertEmbeddingCompatible } from './db/sqlite.js';
 import { loadOrCreateConfig } from './config.js';
 import { createProviders } from './services/ai-providers.js';
 import { SessionManager } from './services/session-manager.js';
@@ -29,6 +29,7 @@ import { NoteEmbedder } from './services/note-embedder.js';
 import { DomainRouter } from './services/domain-router.js';
 import { InsightEngine } from './services/insight/engine.js';
 import { startHttpServer } from './http/server.js';
+import { logInfo, logWarn } from './log.js';
 
 // ── CLI arg parsing ────────────────────────────────────────────────────────
 const projectArg = process.argv.indexOf('--project');
@@ -42,9 +43,11 @@ try {
   const existing = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf-8') : '';
   if (!existing.includes('.simple-rick')) {
     fs.appendFileSync(gitignorePath, `\n# Simple Rick context engine\n.simple-rick/\n`);
-    console.error('[simple-rick] Added .simple-rick/ to .gitignore');
+    logInfo('startup', 'added .simple-rick/ to .gitignore');
   }
-} catch { /* non-fatal */ }
+} catch (err) {
+  logWarn('startup', 'could not add .simple-rick/ to .gitignore', err);
+}
 
 // ── DB + Config ────────────────────────────────────────────────────────────
 const db = createDatabase(PROJECT_PATH);
@@ -53,7 +56,14 @@ const config = loadOrCreateConfig(db);
 // ── AI Providers ───────────────────────────────────────────────────────────
 const { embedding, chat } = createProviders(process.env as Record<string, string | undefined>);
 
-// Store embedding dimension on first run
+// Refuse to run against embeddings of a different width rather than writing
+// vectors that can never be queried back.
+assertEmbeddingCompatible(
+  { provider: config.embeddingProvider, dimension: config.embeddingDimension },
+  { provider: embedding.name, dimension: embedding.dimension },
+);
+
+// Store embedding provider + dimension on first run
 if (!config.embeddingDimension) {
   db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('embedding_dimension', ?)").run(String(embedding.dimension));
   db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('embedding_provider', ?)").run(embedding.name);

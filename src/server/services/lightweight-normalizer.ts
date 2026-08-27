@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import type { ChatProvider } from './ai-providers.js';
+import { extractObject, asStringArray, asInt, asEnum } from './ai-json.js';
 
 const VALID_DOMAINS = [
   'Code',           // Implementation, debugging, code changes
@@ -33,11 +34,10 @@ Return ONLY JSON: {"entities":[],"domain":"","severity":5}`,
       chunk.content
     );
 
-    const parsed = JSON.parse(result.match(/\{[\s\S]*\}/)?.[0] ?? '{}');
-    const entities = parsed.entities ?? [];
-    const rawDomain = String(parsed.domain ?? 'Miscellaneous');
-    const domain = (VALID_DOMAINS as readonly string[]).includes(rawDomain) ? rawDomain : 'Miscellaneous';
-    const severity = Math.min(10, Math.max(1, parsed.severity ?? 5));
+    const parsed = extractObject(result, 'light-norm');
+    const entities = asStringArray(parsed['entities'], 'light-norm', 'entities', 10);
+    const domain = asEnum(parsed['domain'], VALID_DOMAINS, 'Miscellaneous', 'light-norm', 'domain');
+    const severity = asInt(parsed['severity'], { min: 1, max: 10, fallback: 5 }, 'light-norm', 'severity');
 
     this.db.prepare(
       'UPDATE chunks SET entities = ?, domain = ?, severity = ? WHERE id = ?'

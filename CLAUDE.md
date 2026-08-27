@@ -17,9 +17,13 @@ Simple Rick is a local MCP server that gives coding agents persistent memory. It
 
 ## Critical constraints
 
-**Never write to stdout.** MCP speaks JSON-RPC over stdout; a single `console.log` corrupts the protocol. `src/server/index.ts` reassigns `console.log = console.error` on its first line, above all imports. Keep that line where it is, and use `console.error` for any logging.
+**Never write to stdout.** MCP speaks JSON-RPC over stdout; a single `console.log` corrupts the protocol. `src/server/index.ts` reassigns `console.log = console.error` on its first line, above all imports. Keep that line where it is, and route logging through `log.ts` (see below).
 
-**The database schema lives in code, not in migrations.** `src/server/db/sqlite.ts` applies `schema.sql` and any additional columns inline. There is no migration runner and no version table — if you add a column, add it there, idempotently.
+**Schema changes go through the migration runner.** `src/server/db/sqlite.ts` applies `schema.sql`, then `db/migrate.ts` applies anything newer than the version recorded in `schema_migrations`. To change the schema, append an entry to `MIGRATIONS` — never edit or reorder an existing one, its version is already recorded in databases in the wild.
+
+**LLM output is never trusted directly.** Parse it through `services/ai-json.ts` (`extractObject`, `extractArray`, `asString`, `asInt`, `asEnum`, `asStringArray`, `filterValid`). Those helpers coerce and log rather than throw, because one malformed model response must not take down the pipeline. Do not reintroduce bare `JSON.parse(raw) ?? {}`.
+
+**Errors get logged.** Use `log.ts` (`logError`/`logWarn`/`logInfo`/`logDebug`) instead of `console.error`, and do not write a bare `catch {}` — pick a level: expected-and-noisy is `debug`, unexpected is `warn` or `error`.
 
 ## Commands
 
@@ -40,11 +44,15 @@ src/server/
   config.ts                bearer token + persisted config in the DB
   db/
     sqlite.ts              connection, schema application, vec tables
+    migrate.ts             versioned migrations + schema_migrations table
     schema.sql             table definitions
+  log.ts                   leveled stderr logging
+  limits.ts                env-tunable scanner and queue limits
   http/
     server.ts              HTTP + WebSocket server (port 3777, loopback only)
     routes.ts              /api/graph, /api/sessions, /api/record
   services/
+    ai-json.ts             safe parsing/coercion of LLM JSON output
     session-manager.ts     session lifecycle
     recorder.ts            crash-safe raw turn + file state recording
     file-watcher.ts        chokidar diffs with ms timestamps
@@ -70,4 +78,4 @@ hooks/
 
 ## Known weak spots
 
-Documented in the README under *Known limitations*: no migration system, unvalidated AI JSON output, swallowed errors, hardcoded limits, and embedding-dimension mismatches on provider switch. Fixing these is welcome; be aware they are known, not overlooked.
+See the README under *Known limitations*. The big ones are that recording grows the database without any pruning, and that graph quality tracks the quality of the configured model.

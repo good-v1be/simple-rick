@@ -4,6 +4,7 @@ import type { NoteEmbedder } from './note-embedder.js';
 import type { DomainRouter } from './domain-router.js';
 import type { Recorder } from './recorder.js';
 import type { NormQueue } from './norm-queue.js';
+import { logWarn } from '../log.js';
 
 export class Normalizer {
   constructor(
@@ -88,8 +89,9 @@ export class Normalizer {
       this.db.prepare(
         "UPDATE sessions SET domain = ?, tags = ?, summary = ?, status = 'closed', closed_at = datetime('now') WHERE id = ?"
       ).run(route.domain, JSON.stringify(route.tags), route.summary, sessionId);
-    } catch {
-      // sessions table columns may differ; best effort
+    } catch (err) {
+      // Unexpected: the sessions table should always have these columns.
+      logWarn('normalizer', `could not persist route for session ${sessionId}`, err);
     }
 
     // Clear recorder turn counter for this session
