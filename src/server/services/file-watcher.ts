@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createPatch } from 'diff';
 import type Database from 'better-sqlite3';
+import { logDebug } from '../log.js';
 
 export class FileWatcher {
   private watcher: FSWatcher | null = null;
@@ -64,8 +65,9 @@ export class FileWatcher {
       this.db.prepare(
         'INSERT INTO file_states (session_id, timestamp_ms, file_path, content, diff) VALUES (?, ?, ?, ?, ?)'
       ).run(sessionId, timestampMs, relativePath, content, diff ?? null);
-    } catch {
-      // File might be binary or inaccessible — skip silently
+    } catch (err) {
+      // Expected for binary or unreadable files; noisy, so debug level.
+      logDebug("file-watcher", `skipped ${absolutePath}`, err);
     }
   }
 }

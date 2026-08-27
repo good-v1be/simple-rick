@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { logDebug } from '../log.js';
 
 export interface NoteFrontmatter {
   type: 'turn' | 'session-summary' | 'decision' | 'anomaly';
@@ -99,8 +100,8 @@ export class VaultWriter {
             const subNotes = await this.listNotes(path.join(dir, entry), true);
             results.push(...subNotes);
           }
-        } catch {
-          // skip
+        } catch (err) {
+          logDebug('vault-writer', `could not stat ${entry}`, err);
         }
       }
     }

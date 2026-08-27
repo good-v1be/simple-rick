@@ -1,6 +1,12 @@
+import { extractObject, asString, asStringArray, asEnum } from './ai-json.js';
 import type { ChatProvider } from './ai-providers.js';
 import type { VaultWriter } from './vault-writer.js';
 import type { NoteEmbedder } from './note-embedder.js';
+
+const VALID_DOMAINS = [
+  'Code', 'Architecture', 'Testing', 'DevOps', 'Data', 'Frontend',
+  'Backend', 'Documentation', 'Security', 'Performance', 'Research', 'Miscellaneous',
+] as const;
 
 export interface RouteResult {
   domain: string;
@@ -58,29 +64,13 @@ Rules:
 
     const raw = await this.chat.chat(system, `Session ID: ${sessionId}\n\nTurns:\n${turnsText}`);
 
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) {
-      console.error('[domain-router] Failed to extract JSON from AI response:', raw.slice(0, 200));
-      return { domain: 'Miscellaneous', summary: raw.trim(), tags: [], anomalies: [] };
-    }
-
-    try {
-      const parsed = JSON.parse(match[0]) as RouteResult;
-      const validDomains = [
-        'Code', 'Architecture', 'Testing', 'DevOps', 'Data', 'Frontend',
-        'Backend', 'Documentation', 'Security', 'Performance', 'Research', 'Miscellaneous',
-      ];
-      const domain = validDomains.includes(parsed.domain) ? parsed.domain : 'Miscellaneous';
-      return {
-        domain,
-        summary: parsed.summary ?? '',
-        tags: Array.isArray(parsed.tags) ? parsed.tags : [],
-        anomalies: [],
-      };
-    } catch (err) {
-      console.error('[domain-router] JSON parse failed:', err);
-      return { domain: 'Miscellaneous', summary: '', tags: [], anomalies: [] };
-    }
+    const parsed = extractObject(raw, 'domain-router');
+    return {
+      domain: asEnum(parsed['domain'], VALID_DOMAINS, 'Miscellaneous', 'domain-router', 'domain'),
+      summary: asString(parsed['summary'], raw.trim(), 'domain-router', 'summary'),
+      tags: asStringArray(parsed['tags'], 'domain-router', 'tags', 5),
+      anomalies: [],
+    };
   }
 
   async routeSession(

@@ -3,6 +3,8 @@ import type { ChatProvider, EmbeddingProvider } from '../ai-providers.js';
 import { detectSignals, type SignalCandidate } from './signal-detector.js';
 import { buildValidatePrompt, buildCausalChainPrompt } from './prompts.js';
 import crypto from 'node:crypto';
+import { extractObject, asString, asInt } from '../ai-json.js';
+import { logWarn } from '../../log.js';
 
 type BroadcastFn = (event: Record<string, unknown>) => void;
 
@@ -14,13 +16,20 @@ interface ValidationResult {
 }
 
 function parseValidation(raw: string): ValidationResult | null {
-  const match = raw.match(/\{[\s\S]*\}/);
-  if (!match) return null;
-  try {
-    return JSON.parse(match[0]) as ValidationResult;
-  } catch {
+  const parsed = extractObject(raw, 'insight');
+  if (typeof parsed['is_valid'] !== 'boolean') {
+    logWarn('insight', 'validation response had no boolean is_valid, discarding', parsed);
     return null;
   }
+  return {
+    is_valid: parsed['is_valid'],
+    confidence: asInt(
+      typeof parsed['confidence'] === 'number' ? Math.round(parsed['confidence'] * 100) : parsed['confidence'],
+      { min: 0, max: 100, fallback: 0 }, 'insight', 'confidence',
+    ) / 100,
+    causal_direction: asString(parsed['causal_direction'], 'none', 'insight', 'causal_direction'),
+    conversational_summary: asString(parsed['conversational_summary'], '', 'insight', 'conversational_summary'),
+  };
 }
 
 export class InsightEngine {

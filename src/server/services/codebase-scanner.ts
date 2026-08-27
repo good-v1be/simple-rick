@@ -6,6 +6,9 @@ import type Database from 'better-sqlite3';
 
 const execFileAsync = promisify(execFile);
 import type { EmbeddingProvider, ChatProvider } from './ai-providers.js';
+import { extractArray, asStringArray, filterValid } from './ai-json.js';
+import { logDebug, logWarn } from '../log.js';
+import { LIMITS } from '../limits.js';
 
 interface ScannedFile {
   relativePath: string;
@@ -33,8 +36,8 @@ const IGNORED_DIRS = new Set([
   'coverage', '.cache', '.turbo', 'vendor', '__pycache__',
 ]);
 
-const MAX_FILE_SIZE = 50_000; // 50KB per file
-const MAX_FILES = 500;
+const MAX_FILE_SIZE = LIMITS.maxFileSize;
+const MAX_FILES = LIMITS.maxFiles;
 
 export class CodebaseScanner {
   constructor(
@@ -123,8 +126,9 @@ export class CodebaseScanner {
     let gitLearnings = 0;
     try {
       gitLearnings = await this.analyzeGitHistory(sessionId, projectPath, projectName);
-    } catch {
-      // not a git repo or git not available
+    } catch (err) {
+      // Expected outside a git repo.
+      logDebug('scanner', 'git history analysis skipped', err);
     }
 
     return [
@@ -172,8 +176,8 @@ export class CodebaseScanner {
         if (content.length <= MAX_FILE_SIZE) {
           results.push({ relativePath: name, content, sizeBytes: content.length });
         }
-      } catch {
-        // file doesn't exist — skip
+      } catch (err) {
+        logDebug('scanner', `key file ${name} not readable`, err);
       }
     }
     return results;
@@ -196,8 +200,8 @@ export class CodebaseScanner {
         if (content.length <= MAX_FILE_SIZE) {
           results.push({ relativePath: file.relativePath, content, sizeBytes: content.length });
         }
-      } catch {
-        // skip
+      } catch (err) {
+        logDebug('scanner', `source file ${file.relativePath} not readable`, err);
       }
     }
     return results;
@@ -323,19 +327,19 @@ Respond with JSON ONLY (no code fences):
         'You are a software architect. Extract implicit decisions from code.',
         prompt,
       );
-      // Strip code fences and find the JSON array
-      let cleaned = raw.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
-      const arrayMatch = cleaned.match(/\[[\s\S]*\]/);
-      if (!arrayMatch) {
-        console.error('[simple-rick] No JSON array found in decision response:', cleaned.slice(0, 200));
-        return 0;
-      }
-      const decisions = JSON.parse(arrayMatch[0]) as Array<{
-        decision: string; rationale: string; component?: string; alternatives?: string[];
-      }>;
+      const decisions = filterValid(
+        extractArray(raw, 'scanner'),
+        (item): item is { decision: string; rationale: string; component?: string; alternatives?: string[] } =>
+          typeof item === 'object' && item !== null &&
+          typeof (item as { decision?: unknown }).decision === 'string' &&
+          typeof (item as { rationale?: unknown }).rationale === 'string',
+        'scanner',
+        'decisions',
+      );
 
       for (const d of decisions) {
-        const altText = d.alternatives?.length ? ` Alternativen verworfen: ${d.alternatives.join(', ')}.` : '';
+        const alternatives = asStringArray(d.alternatives, 'scanner', 'alternatives');
+        const altText = alternatives.length ? ` Rejected alternatives: ${alternatives.join(', ')}.` : '';
         await this.storeChunk(sessionId, {
           summary: `${d.decision}. ${d.rationale}.${altText}`,
           intent: 'architecture_decision',
@@ -346,7 +350,7 @@ Respond with JSON ONLY (no code fences):
       }
       return decisions.length;
     } catch (err) {
-      console.error('[simple-rick] Decision extraction failed:', err instanceof Error ? err.message : err);
+      logWarn('scanner', 'decision extraction failed', err);
       return 0;
     }
   }
@@ -390,7 +394,7 @@ Antworte in Markdown, kompakt.`;
         return true;
       }
     } catch (err) {
-      console.error('[simple-rick] Pattern extraction failed:', err);
+      logWarn('scanner', 'pattern extraction failed', err);
     }
     return false;
   }
@@ -452,10 +456,18 @@ Respond with JSON ONLY (no code fences):
         'You are an experienced engineering manager. Analyze git histories and extract actionable learnings.',
         prompt,
       );
-      const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-      const learnings = JSON.parse(cleaned) as Array<{
-        learning: string; category: string; relevance: string;
-      }>;
+      const learnings = filterValid(
+        extractArray(raw, 'scanner'),
+        (item): item is { learning: string; category: string; relevance: string } =>
+          typeof item === 'object' && item !== null &&
+          typeof (item as { learning?: unknown }).learning === 'string',
+        'scanner',
+        'git learnings',
+      ).map(l => ({
+        learning: l.learning,
+        category: typeof l.category === 'string' ? l.category : 'unknown',
+        relevance: typeof l.relevance === 'string' ? l.relevance : 'medium',
+      }));
 
       if (learnings.length > 0) {
         const formatted = learnings
@@ -463,7 +475,7 @@ Respond with JSON ONLY (no code fences):
           .join('\n');
 
         await this.storeChunk(sessionId, {
-          summary: `Learnings aus Git-History von ${projectName}:\n\n${formatted}`,
+          summary: `Learnings from the git history of ${projectName}:\n\n${formatted}`,
           intent: 'question',
           component: 'project/history-learnings',
         });
@@ -480,7 +492,7 @@ Respond with JSON ONLY (no code fences):
 
       return learnings.length;
     } catch (err) {
-      console.error('[simple-rick] Git analysis failed:', err);
+      logWarn('scanner', 'git analysis failed', err);
       return 0;
     }
   }
@@ -527,7 +539,7 @@ IMPORTANT: do not enumerate individual packages. Summarize, do not list. Max 500
         prompt,
       );
     } catch (err) {
-      console.error('[simple-rick] Arch summary failed:', err);
+      logWarn('scanner', 'architecture summary failed', err);
       return '';
     }
   }

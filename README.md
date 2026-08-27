@@ -168,16 +168,25 @@ It is not wired into `npm test` because it costs real API calls.
 
 ---
 
+## Tuning
+
+All optional — the defaults are what the project ran on for months.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `SIMPLE_RICK_LOG_LEVEL` | `info` | `error`, `warn`, `info` or `debug`. Everything goes to stderr; stdout belongs to MCP. |
+| `SIMPLE_RICK_MAX_FILES` | `500` | How many files the codebase scanner walks. Raise it for large repos. |
+| `SIMPLE_RICK_MAX_FILE_SIZE` | `50000` | Largest file the scanner reads, in bytes. |
+| `SIMPLE_RICK_QUEUE_THROTTLE_MS` | `2000` | Pause between normalization passes. Lower burns API calls faster. |
+
 ## Known limitations
 
 Honest list, so nobody is surprised:
 
-- **No migration system.** The schema is applied inline in `src/server/db/sqlite.ts`, with ad-hoc `ALTER TABLE` calls and no version table.
-- **Switching embedding provider breaks existing vectors.** The dimension is stored on first run but not validated afterwards. If you switch, drop the `chunk_embeddings` and `note_embeddings` tables and let them re-embed.
-- **AI output is parsed by regex, not validated.** Malformed JSON from the model silently becomes an empty object.
-- **Errors are often swallowed.** Several `catch` blocks discard the error without logging, which makes debugging harder than it should be.
-- **Hardcoded limits.** Max file size (50 KB), max files scanned (500) and the queue throttle are constants, not configuration.
 - **Only tested against Claude Code.** The MCP interface is standard, but the recorder hook is written for Claude Code's hook format.
+- **Recording is not cheap on disk.** See [Where your data lives](#where-your-data-lives).
+- **The knowledge graph is only as good as the model behind it.** Normalization, domain routing and insight validation are all LLM calls; a small or cheap model produces a correspondingly vague graph.
+- **No pruning yet.** Nothing ages out of the database on its own.
 
 ---
 
